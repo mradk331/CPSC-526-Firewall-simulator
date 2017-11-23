@@ -86,7 +86,11 @@ def get_configuration(config_file):
 
                             # Set the minimum and maximum values of the ip address
                             # In this case, the min and max is the same because the routing prefix is all 32 bytes
-                            min_ip, max_ip = binary_address
+                            min_ip = binary_address
+                            max_ip = binary_address
+
+                            # Re-initialize to 0
+                            binary_address = ""
 
                         else:
                             print("Invalid ip address size provided on line " + str(counter + 1))
@@ -94,7 +98,8 @@ def get_configuration(config_file):
 
                     # If a wildcard is used, we do not change the min and max values for an ip address
                     elif ip_address[0] == "*":
-                        pass
+                        min_ip = "".ljust(32, '0')
+                        max_ip = "".ljust(32, '1')
 
                 # Otherwise there is an routing prefix
                 elif len(ip_address) == 2:
@@ -130,11 +135,14 @@ def get_configuration(config_file):
                             # routing prefix
                             # min-ip will set everything after the leading bits in ip address to 0's (min value)
                             # based on the prefix
-                            min_ip = binary_address[:routing_prefix].ljust(32, '0')
+                            min_ip = binary_address[:int(routing_prefix)].ljust(32, '0')
 
                             # max-ip will set everything after the leadings bits in ip address to 1's (max value)
                             # based on the prefix
-                            max_ip = binary_address[:routing_prefix].ljust(32, '1')
+                            max_ip = binary_address[:int(routing_prefix)].ljust(32, '1')
+
+                            binary_address = ""
+
 
                         else:
                             print("Invalid ip address size provided on line " + str(counter + 1))
@@ -164,7 +172,7 @@ def get_configuration(config_file):
                     if port == "*":
                         pass
 
-                    # Check for valid point range
+                    # Check for valid port range
                     elif int(port) < 0 or int(port) > 65535:
 
                         print("Line number " + str(counter + 1) + " contains an invalid port range: " + ports)
@@ -187,17 +195,93 @@ def get_configuration(config_file):
             # Put dictionary in rules array
             rules.append(rule_dictionary)
 
-            dicc = rules[counter]
+        counter += 1
+
+    return rules
+
+
+def get_packets():
+
+    packets = []
+    binary_address = ""
+
+    # Take count on the current line/packet we are reading from STDIN
+    counter = 1
+
+    # Read STDIN line by line, appending each packet in each line to an array
+    for line in sys.stdin.readlines():
+
+        packet = line.strip()
+
+        # Split each field into elements in an array
+        packet = packet.split()
+
+        # Check if packet contains the valid number of fields
+        if len(packet) != 4:
+            print("Packet number " + str(counter) + " contains an invalid number of fields.")
+            quit()
+
+        direction = packet[0]
+        ip_address = packet[1]
+        port = packet[2]
+        flag = packet[3]
+
+        # Check if direction is valid
+        if not (direction == "in" or direction == "out"):
+
+            print("Packet number " + str(counter) + " contains an invalid direction." + direction)
+            quit()
+
+        try:
+
+            # Split each 8 bits in the ip address into array elements
+            ip_address = ip_address.split(".")
+
+            if len(ip_address) != 4:
+                print("Packet number " + str(counter) + " contains an invalid ip address size.")
+                quit()
+
+            for ip in ip_address:
+
+                # Check that each 8 bits of the address are within the correct range
+                if int(ip) < 0 or int(ip) > 255:
+                    print("Packet number " + str(counter) + " contains an invalid ip address range: " + ip)
+                    quit()
+
+                # Otherwise we convert each 8 bits of address into binary
+                else:
+
+                    # The splice [2:] below gets rid of 0b created to indicate binary in python
+                    binary_address += str(bin(int(ip)))[2:].zfill(8)
+
+            # Check for valid port range
+            if int(port) < 0 or int(port) > 65535:
+
+                print("Packet number " + str(counter) + " contains an invalid port range: " + port)
+                quit()
+
+            # If the flag given is not 0 or 1 we indicate an error.
+            if not (flag == "0" or flag == "1"):
+
+                print("Packet number " + str(counter) + " contains an invalid flag: " + flag)
+                quit()
+
+        except Exception as e:
+            print("Invalid packet format has been received on line " + str(counter))
+            print(e)
+            quit()
 
         counter += 1
 
-    #configuration = ""
+        packet_dictionary = {'direction': direction, 'ip_address': binary_address, 'port': port, 'flag': flag}
+        packets.append(packet_dictionary)
 
-    #process_configuration(configuration)
+    return packets
+
+# Filter the incoming and outgoing packets based on the established firewall rules
+def filter_packets(rules, packets):
 
 
-# Process the configuration file to establish the rules for incoming and outgoing packets
-def process_configuration(configuration):
 
     print()
 
@@ -210,7 +294,13 @@ if __name__ == "__main__":
     if os.path.isfile(config_filename):
 
         # Read in the configuration from the file
-        get_configuration(config_filename)
+        rules = get_configuration(config_filename)
+
+        # Get the packets
+        packets = get_packets()
+
+        # Filter the packets
+        filter_packets(rules, packets)
 
     else:
 
