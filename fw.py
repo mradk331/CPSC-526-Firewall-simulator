@@ -185,8 +185,10 @@ def get_configuration(config_file):
                 quit()
 
             if len(line_rule) == 5:
+
+                flag_boolean = "1"
                 rule_dictionary = {'direction': direction, 'action': action, 'min-ip': min_ip, 'max-ip': max_ip,
-                                   'ports': ports, 'flag': flag}
+                                   'ports': ports, 'flag': flag_boolean}
 
             else:
                 rule_dictionary = {'direction': direction, 'action': action, 'min-ip': min_ip, 'max-ip': max_ip,
@@ -204,6 +206,7 @@ def get_packets():
 
     packets = []
     binary_address = ""
+    decimal_address = ""
 
     # Take count on the current line/packet we are reading from STDIN
     counter = 1
@@ -223,6 +226,7 @@ def get_packets():
 
         direction = packet[0]
         ip_address = packet[1]
+        decimal_address = ip_address
         port = packet[2]
         flag = packet[3]
 
@@ -266,24 +270,84 @@ def get_packets():
                 print("Packet number " + str(counter) + " contains an invalid flag: " + flag)
                 quit()
 
+
         except Exception as e:
             print("Invalid packet format has been received on line " + str(counter))
             print(e)
             quit()
 
-        counter += 1
+        packet_dictionary = {'direction': direction, 'decimal-address': decimal_address, 'ip_address': binary_address,
+                             'port': port, 'flag': flag}
 
-        packet_dictionary = {'direction': direction, 'ip_address': binary_address, 'port': port, 'flag': flag}
         packets.append(packet_dictionary)
 
+        # Clear binary address and increment counter
+        binary_address = ""
+        counter += 1
+
     return packets
+
 
 # Filter the incoming and outgoing packets based on the established firewall rules
 def filter_packets(rules, packets):
 
+    # Check if any of the rules apply for each packet
+    for packet in packets:
 
+        rule_line_number = 0
 
-    print()
+        for rule in rules:
+
+            # Check if the rule matches up to any of the packets and print output based on that match
+            if rule['direction'] == packet['direction']:
+
+                matching_port = False
+
+                # Check if there is a matching port for the packet
+                for port in rule['ports']:
+
+                    if port == "*" or port == packet['port']:
+
+                        matching_port = True
+
+                # If port matches we check the ip range and any flags
+                if matching_port is True:
+
+                    min_ip = rule['min-ip']
+                    max_ip = rule['max-ip']
+                    packet_address = packet['ip_address']
+
+                    # Convert binary strings of addresses to an integer
+                    min_ip = int(min_ip, 2)
+                    max_ip = int(max_ip, 2)
+                    packet_address = int(packet_address, 2)
+
+                    # If the packet address is within the correct rule range for the current rule
+                    # we check the flag and print output
+                    if packet_address >= min_ip and packet_address <= max_ip:
+
+                        if rule['flag'] == "1" and packet['flag'] == "1":
+
+                            print(rule['action'] + "(" + str(rule_line_number + 1) + ") " + packet['direction'] + " "
+                                  + packet['decimal-address'] + " " +  packet['port'] + " " + packet['flag'])
+
+                            break
+
+                        elif rule['flag'] is None:
+
+                            print(rule['action'] + "(" + str(rule_line_number + 1) + ") " + packet['direction'] + " "
+                                  + packet['decimal-address'] + " " + packet['port'] + " " + packet['flag'])
+
+                            break
+
+            rule_line_number += 1
+
+            # If the rule line exceeds the number of rules then there must not be a rule for that packet
+            if rule_line_number >= len(rules):
+                print("drop() " + packet['direction'] + " "
+                      + packet['decimal-address'] + " " + packet['port'] + " " + packet['flag'])
+
+                break
 
 
 if __name__ == "__main__":
